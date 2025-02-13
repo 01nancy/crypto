@@ -1,0 +1,77 @@
+import requests
+import pandas as pd
+import time
+import os
+
+# Define the file path
+file_path = os.path.join(f"{os.getcwd()}/output_data", 'top_50_cryptocurrencies_with_analysis.xlsx')
+
+# Function to fetch data from API and save to Excel
+def fetch_data():
+    try:
+        url = "https://api.coingecko.com/api/v3/coins/markets"
+        params = {
+            "vs_currency": "usd",
+            "order": "market_cap_desc",
+            "per_page": 50,
+            "page": 1,
+            "sparkline": False
+        }
+
+        response = requests.get(url, params=params)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+
+        data = response.json()
+
+        # Extract relevant data
+        crypto_data = [{
+            "Name": crypto['name'],
+            "Symbol": crypto['symbol'].upper(),
+            "Current Price (USD)": crypto['current_price'],
+            "Market Capitalization (USD)": crypto['market_cap'],
+            "24-Hour Trading Volume (USD)": crypto['total_volume'],
+            "Price Change (24-hour, %)": crypto['price_change_percentage_24h'],
+            "Circulating Supply": crypto['circulating_supply'],
+            "Max Supply": crypto.get('max_supply', 'N/A'),
+            "Total Supply": crypto['total_supply']
+        } for crypto in data]
+
+        # Convert to DataFrame
+        df = pd.DataFrame(crypto_data)
+
+        # Basic Analysis
+        top_5_by_market_cap = df.nlargest(5, 'Market Capitalization (USD)')
+        avg_price_top_50 = df['Current Price (USD)'].mean()
+        highest_24h_change = df['Price Change (24-hour, %)'].max()
+        lowest_24h_change = df['Price Change (24-hour, %)'].min()
+
+        # Save to Excel
+        with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Top 50 Cryptos', index=False)
+
+            analysis_data = {
+                'Metric': [
+                    'Average Price (USD)',
+                    'Highest 24-Hour Price Change (%)',
+                    'Lowest 24-Hour Price Change (%)'
+                ],
+                'Value': [
+                    avg_price_top_50,
+                    highest_24h_change,
+                    lowest_24h_change
+                ]
+            }
+            pd.DataFrame(analysis_data).to_excel(writer, sheet_name='Analysis', index=False)
+            top_5_by_market_cap.to_excel(writer, sheet_name='Top 5 by Market Cap', index=False)
+
+        print("Data and analysis saved to top_50_cryptocurrencies_with_analysis.xlsx")
+    
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching data: {e}")
+    except PermissionError:
+        print("Permission denied: Please ensure the Excel file is not open and the script has write permissions.")
+
+# Continuous fetching every 5 minutes
+while True:
+    fetch_data()
+    time.sleep(300)  # 300 seconds = 5 minutes
